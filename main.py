@@ -29,27 +29,6 @@ class GlobalConstants:
 class FileOperations:
     def __init__(self):
         pass
-#         self.FULL_FOLDER_PATH = 0
-#         #self.SUBDIRECTORIES = 1
-#         self.FILES_IN_FOLDER = 2
-#     
-#     """ Get names of files in each folder and subfolder. Also get sizes of files """
-#     def getFileNamesOfFilesInAllFoldersAndSubfolders(self, folderToConsider): 
-#         #TODO: check if folder exists, what about symlinks?, read-only files, files without permission to read, files that can't be moved, corrupted files, What about "file-like objects", Encrypted containers?
-#         folderPaths = []; filesInFolder = []; fileSizes = []
-#         result = os.walk(folderToConsider)        
-#         for oneFolder in result:
-#             folderPath = self.folderSlash(oneFolder[self.FULL_FOLDER_PATH])
-#             folderPaths.append(folderPath)
-#             #subdir = oneFolder[self.SUBDIRECTORIES]
-#             filesInThisFolder = oneFolder[self.FILES_IN_FOLDER]
-#             sizeOfFiles = []
-#             for filename in filesInThisFolder:
-#                 fileProperties = os.stat(folderPath + filename)
-#                 sizeOfFiles.append(fileProperties.st_size)
-#             fileSizes.append(sizeOfFiles)
-#             filesInFolder.append(filesInThisFolder)            
-#         return folderPaths, filesInFolder, fileSizes #returns as [fullFolderPath1, fullFolderPath2, ...], [[filename1, filename2, filename3, ...], [], []], [[filesize1, filesize2, filesize3, ...], [], []]
    
     def isValidFile(self, filenameWithPath):#used to check if file exists, without throwing exception
         return os.path.isfile(filenameWithPath)   
@@ -103,7 +82,8 @@ class FileOperations:
         fHandle = open(filename, "rb") #TODO: try-catch   
         datastructure = pickle.load(fHandle)
         fHandle.close() 
-        return datastructure       
+        return datastructure   
+    
 
 #-----------------------------------------------             
 #-----------------------------------------------
@@ -222,9 +202,9 @@ class FolderChoiceMenu:#GUI
 class MainMenu:#Commandline
     def __init__(self, activeFolder):
         self.activeFolder = activeFolder
-        self.folderSelection = SubMenu_CreateDjangoProject(["Select folder in which you want to create your Django project"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI
+        self.folderCreation = SubMenu_CreateDjangoProject(["Select folder in which you want to create your Django project"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI
         self.exitOption = SubMenu_Exit()
-        self.options = [self.folderSelection, self.exitOption]
+        self.options = [self.folderCreation, self.exitOption]
         self.userInput = UserInput(self.options)
         menuName = "\nMain Menu";print(menuName);print(len(menuName)*'-')        
     
@@ -244,9 +224,10 @@ class SubMenu_Exit:
 
 class SubMenu_SelectFolderForNewDjangoProject:#allows creating a new Django project
     def __init__(self):
-        self.folderSelection = SubMenu_CreateDjangoProject(["Select folder in which you want to create your Django project"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI
+        self.folderCreation = SubMenu_CreateDjangoProject(["Select folder in which you want to create your Django project"], [""])#The lists allow showing multiple lines of text in the GUI
+        self.folderSelection = SubMenu_SelectDjangoFolder(["Select existing project folder"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI        
         self.exitOption = SubMenu_Exit()
-        self.options = [self.folderSelection, self.exitOption]
+        self.options = [self.folderSelection, self.folderCreation, self.exitOption]
         self.userInput = UserInput(self.options)
         menuName = "\nDjango project creation menu";print(menuName);print(len(menuName)*'-')
     
@@ -254,8 +235,8 @@ class SubMenu_SelectFolderForNewDjangoProject:#allows creating a new Django proj
         choice = None   
         while choice == None:
             choice = self.userInput.getInput()
-        folderNameWithPath, created = self.options[choice].showMenu()#invoke the menu from one of the objects of menus stored in self.options
-        return folderNameWithPath, created
+        folderNameWithPath = self.options[choice].showMenu()#invoke the menu from one of the objects of menus stored in self.options
+        return folderNameWithPath
 
         
 class SubMenu_CreateDjangoProject:#ask user to show the root folder of a Django project
@@ -277,8 +258,8 @@ class SubMenu_CreateDjangoProject:#ask user to show the root folder of a Django 
     
     def __createDjangoProject__(self, folderNameWithPath):
         projectCreated = False
-        projectName = input("\nWhat name would you like to give your project (simply press Enter if you want to go back to the previous menu)? ")
-        if projectName:
+        projectName = input("\nWhat name would you like to give your project (simply press Enter if you want to exit)? ")
+        if projectName:#TODO: check if name is valid
             os.chdir(folderNameWithPath)
             print("Changed working directory to: ", os.getcwd())
             #---create the Django project
@@ -288,8 +269,10 @@ class SubMenu_CreateDjangoProject:#ask user to show the root folder of a Django 
             #subprocess.check_call(shlex.split(command))
             process = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE) #TODO: implement error handling
             output,error=process.communicate();print(output);print(error)
-            #TODO: verify that it is created
+            #TODO: verify that it is created. Errorhandling
             projectCreated = True
+        else:
+            exit()
         return projectCreated
         
             
@@ -316,8 +299,9 @@ class MenuController:#Commandline
         self.parameters.loadParameters()      
         if not self.parameters.djangoProjectFolders:#is empty (no known Django project)
             self.menu = SubMenu_SelectFolderForNewDjangoProject()#allow user to specify a folder to create a new project
-            foldernameWithPath, success = self.menu.showMenu() 
-            self.menu = MainMenu(self.parameters.getProjectFolderPath())           
+            foldernameWithPath = self.menu.showMenu() 
+            self.parameters.setProjectFolderPath(foldernameWithPath)
+            self.menu = MainMenu(foldernameWithPath)           
         else:
             print("\n\nDjango project considered: ", self.parameters.getProjectFolderPath())
             print("You can change the project using the menu options below")          

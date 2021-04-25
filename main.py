@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 '''
 Django Runner: A simple program to manage various Django tasks
 Created on 24-Apr-2021
@@ -6,8 +7,10 @@ License: MIT
 '''
 
 import os
+import shlex #split string like the shell's split mechanism
 import shutil #for moving file
-import pickle
+import pickle #for saving data
+import subprocess #for running processes outside this program
 import PySimpleGUI as sg
 
 
@@ -164,40 +167,27 @@ class ProgramParameters:
 #-------------------- MENUS --------------------
 #-----------------------------------------------
 #-----------------------------------------------
-class MainMenu:#Commandline
-    def __init__(self):
-        self.options = [
-            "Create a new Django project",
-            "Select an existing Django project folder",
-            "Create an app in selected Django project"
-            ""
-            ]
-    
-    def showMenuAndGetInput(self):
-        pass
+
+class UserInput:
+    def __init__(self, options):
+        self.options = options
         
-class MenuController:#Commandline
-    def __init__(self):
-        parameters = ProgramParameters()
-        parameters.loadParameters()      
-        if not parameters.djangoProjectFolders:#is empty (no known Django project)
-            #---get Django project folder path from user since none is known
-            folderChoice = FolderChoiceMenu()
-            folderChoice.showUserTheMenu(["Please select the Django project folder"], ["Please specify the root folder of the project"])
-            folderNameWithPath = folderChoice.getUserChoice()
-            if not folderNameWithPath:
-                print('No Django folder specified. Exiting...')
-                exit()
-            else:
-                parameters.setProjectFolderPath(folderNameWithPath)
+    def getInput(self):        
+        i = 1
+        for option in self.options:
+            print(str(i)+".", option.optionName)
+            i = i + 1
+        choice = input("Your choice (enter a number)? ")
+        if choice.isdigit():#only True for whole numbers
+            choice = int(choice)
+            if choice <= 0 or choice > i-1:
+                choice = None
         else:
-            print("\n\nDjango project considered: ", parameters.getProjectFolderPath())
-            print("You can change the project using the menu options below")          
-     
-    def run(self):
-        pass        
-     
-     
+            choice = None
+        if choice == None: print("Please enter a valid input")
+        else: choice = choice - 1 #since the first position in a list is 0
+        return choice 
+    
 class FolderChoiceMenu:#GUI
     def __init__(self):
         self.event = None
@@ -227,7 +217,117 @@ class FolderChoiceMenu:#GUI
             folderChosen = self.values[0]
             if fileOps.isThisValidDirectory(folderChosen):#this check is not really required
                 retVal = fileOps.folderSlash(folderChosen)
-        return retVal      
+        return retVal
+    
+class MainMenu:#Commandline
+    def __init__(self, activeFolder):
+        self.activeFolder = activeFolder
+        self.folderSelection = SubMenu_CreateDjangoProject(["Select folder in which you want to create your Django project"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI
+        self.exitOption = SubMenu_Exit()
+        self.options = [self.folderSelection, self.exitOption]
+        self.userInput = UserInput(self.options)
+        menuName = "\nMain Menu";print(menuName);print(len(menuName)*'-')        
+    
+    def showMenu(self):
+        choice = None   
+        while choice == None:
+            choice = self.userInput.getInput()
+        self.options[choice].showMenu()#invoke the menu from one of the objects of menus stored in self.options
+    
+class SubMenu_Exit:
+    def __init__(self):
+        self.optionName = "Exit"
+    def showMenu(self):
+        print('Exiting program...')
+        exit()
+        
+
+class SubMenu_SelectFolderForNewDjangoProject:#allows creating a new Django project
+    def __init__(self):
+        self.folderSelection = SubMenu_CreateDjangoProject(["Select folder in which you want to create your Django project"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI
+        self.exitOption = SubMenu_Exit()
+        self.options = [self.folderSelection, self.exitOption]
+        self.userInput = UserInput(self.options)
+        menuName = "\nDjango project creation menu";print(menuName);print(len(menuName)*'-')
+    
+    def showMenu(self):     
+        choice = None   
+        while choice == None:
+            choice = self.userInput.getInput()
+        folderNameWithPath, created = self.options[choice].showMenu()#invoke the menu from one of the objects of menus stored in self.options
+        return folderNameWithPath, created
+
+        
+class SubMenu_CreateDjangoProject:#ask user to show the root folder of a Django project
+    def __init__(self, topText, bottomText):
+        self.optionName = "Create a new Django project"
+        self.topText = topText
+        self.bottomText = bottomText
+    
+    def showMenu(self):
+        folderChoice = FolderChoiceMenu()
+        folderChoice.showUserTheMenu(self.topText, self.bottomText)
+        folderNameWithPath = folderChoice.getUserChoice()
+        if not folderNameWithPath:
+            folderNameWithPath = None
+            print('No Django folder specified.')
+        else:
+            successfullyCreated = self.__createDjangoProject__(folderNameWithPath)
+        return folderNameWithPath, successfullyCreated
+    
+    def __createDjangoProject__(self, folderNameWithPath):
+        projectCreated = False
+        projectName = input("\nWhat name would you like to give your project (simply press Enter if you want to go back to the previous menu)? ")
+        if projectName:
+            os.chdir(folderNameWithPath)
+            print("Changed working directory to: ", os.getcwd())
+            #---create the Django project
+            command = 'django-admin startproject ' + projectName
+            #command = ['django-admin', 'startproject', projectName]
+            #subprocess.check_call(command)
+            #subprocess.check_call(shlex.split(command))
+            process = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE) #TODO: implement error handling
+            output,error=process.communicate();print(output);print(error)
+            #TODO: verify that it is created
+            projectCreated = True
+        return projectCreated
+        
+            
+class SubMenu_SelectDjangoFolder:#ask user to show the root folder of a Django project
+    def __init__(self, topText, bottomText):
+        self.optionName = "Select existing Django project folder"
+        self.topText = topText
+        self.bottomText = bottomText
+    
+    def showMenu(self):
+        folderChoice = FolderChoiceMenu()
+        folderChoice.showUserTheMenu(self.topText, self.bottomText)
+        folderNameWithPath = folderChoice.getUserChoice()
+        if not folderNameWithPath:
+            folderNameWithPath = None
+            print('No Django folder specified.')
+        return folderNameWithPath
+
+        
+class MenuController:#Commandline
+    def __init__(self):
+        self.menu = None
+        self.parameters = ProgramParameters()
+        self.parameters.loadParameters()      
+        if not self.parameters.djangoProjectFolders:#is empty (no known Django project)
+            self.menu = SubMenu_SelectFolderForNewDjangoProject()#allow user to specify a folder to create a new project
+            foldernameWithPath, success = self.menu.showMenu() 
+            self.menu = MainMenu(self.parameters.getProjectFolderPath())           
+        else:
+            print("\n\nDjango project considered: ", self.parameters.getProjectFolderPath())
+            print("You can change the project using the menu options below")          
+     
+    def showMenu(self):
+        while True:
+            self.menu.showMenu()       
+     
+     
+      
            
 
 #-----------------------------------------------             
@@ -239,7 +339,7 @@ if __name__ == '__main__':
     sg.theme('Dark grey 13')  #GUI's theme
 
     menu = MenuController()
-    menu.run()
+    menu.showMenu()
         
                
         

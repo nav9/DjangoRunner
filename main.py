@@ -113,14 +113,21 @@ class FileOperations:
             into memory, the insertion is done and then the file is written, so this function
             is appropriate only for small files that will easily fit in memory. """
         linesInFile = self.readFromFile(fileWithPath)
+        print('Read these many lines: ', len(linesInFile))
         sequenceOrdinal = 0
         lineOrdinal = 0
         addedLine = False
         for lin in linesInFile:
+            #print(lin)
+            #print('Comparing: ', sequenceToSearch[sequenceOrdinal], ' with ', lin)
             if sequenceToSearch[sequenceOrdinal] in lin:
-                if sequenceOrdinal + 1 == len(sequenceToSearch):#if the last part of the sequence is found
+                #print('Found match')
+                #print('ordinal == len(seq)', sequenceOrdinal+1, len(sequenceToSearch))
+                if sequenceOrdinal + 1 == len(sequenceToSearch):#if the last part of the sequence is found   
+                    #print('inserting ', lineToAdd)                 
                     linesInFile.insert(lineOrdinal, lineToAdd)
                     addedLine = True
+                    break
                 else:
                     sequenceOrdinal = sequenceOrdinal + 1
             lineOrdinal = lineOrdinal + 1
@@ -151,6 +158,7 @@ class ProgramParameters:
             validFolders = set()
             invalidFolderDetected = False
             for folder in folders:
+                print('Known folder: ', folder)
                 if self.fileOps.isThisValidDirectory(folder): 
                     validFolders.add(folder)
                 else: 
@@ -377,14 +385,15 @@ class CreateApp_SubMenu:
             for folderOrdinal in range(len(folderPaths)):#for each folder
                 self.pathToSettings = folderPaths[folderOrdinal]
                 filenames = filesInFolder[folderOrdinal]                
-                print('Searching for settings.py in ', self.pathToSettings)                
+                print('Searching for '+self.settingsFilename+' in ', self.pathToSettings)
                 for fileOrdinal in range(len(filenames)):#for each file in the folder
                     filename = filesInFolder[folderOrdinal][fileOrdinal]
                     if filename == self.settingsFilename:
+                        print("Matched: ", filename, self.settingsFilename)
                         foundSettingsFile = True
                         break
-                    if foundSettingsFile:
-                        break
+                if foundSettingsFile:
+                    break
             if foundSettingsFile:
                 self.pathToSettings = self.fileOps.folderSlash(self.pathToSettings)#this is the pathToSettings to the settings file
                 self.pathToSettings = self.pathToSettings + self.settingsFilename
@@ -393,7 +402,7 @@ class CreateApp_SubMenu:
                 print("ERROR: The settings.py file could not be found for ", self.getCurrentProjectPath(), ". Something is wrong. Please check.")
     
     def __registerAppInSettings__(self):
-        lineToAdd = "'" + self.appName + ".apps." + self.appName[0].upper() + self.appName[1:].lower() + "Config" + "', #user created app"
+        lineToAdd = "\t" + "'" + self.appName + ".apps." + self.appName[0].upper() + self.appName[1:].lower() + "Config" + "', #user created app"
         sequenceToSearch = ["INSTALLED_APPS", "]"]
         self.fileOps.addThisLineAtSpecifiedLocationInFile(self.pathToSettings, lineToAdd, sequenceToSearch)
         self.pathToSettings = None #so that if the current project is changed in main menu, the earlier detected settings file is not even accidentally used

@@ -93,15 +93,15 @@ class FileOperations:
 class ProgramParameters:
     def __init__(self):
         self.fileOps = FileOperations()
-        self.PROJECT_FOLDERS_FILENAME = "projectFolders.pickle"
+        self.PROJECT_FOLDERS_PICKLE_FILENAME = "projectFolders.pickle"
         self.RECENT_FOLDER = "RecentFolder"
         self.OTHER_DJANGO_PROJECTS = "OtherProjects"
         self.djangoProjectFolders = {} #stores the most recent project folder and other known folders
         
     def loadParameters(self):
         #---load project folder names
-        if self.fileOps.isValidFile(self.PROJECT_FOLDERS_FILENAME):#if file exists, load data
-            self.djangoProjectFolders = self.fileOps.unPickleThis(self.PROJECT_FOLDERS_FILENAME)
+        if self.fileOps.isValidFile(self.PROJECT_FOLDERS_PICKLE_FILENAME):#if file exists, load data
+            self.djangoProjectFolders = self.fileOps.unPickleThis(self.PROJECT_FOLDERS_PICKLE_FILENAME)
             #---check if folders are still valid. Remove invalid ones
             folders = self.djangoProjectFolders[self.OTHER_DJANGO_PROJECTS]
             validFolders = set()
@@ -124,7 +124,7 @@ class ProgramParameters:
                         print('Making this folder the default: ', folder)
                         break
             if invalidFolderDetected:
-                self.fileOps.pickleThis(self.djangoProjectFolders, self.PROJECT_FOLDERS_FILENAME)            
+                self.fileOps.pickleThis(self.djangoProjectFolders, self.PROJECT_FOLDERS_PICKLE_FILENAME)            
         else:
             print('No known Django folders stored.')
     
@@ -135,12 +135,12 @@ class ProgramParameters:
         newPaths = set()
         newPaths.add(fullFolderPath)
         if not self.djangoProjectFolders:#create the dict
-            self.djangoProjectFolders = {self.PROJECT_FOLDERS_FILENAME: fullFolderPath, self.OTHER_DJANGO_PROJECTS: newPaths}
+            self.djangoProjectFolders = {self.RECENT_FOLDER: fullFolderPath, self.OTHER_DJANGO_PROJECTS: newPaths}
         else:#add to existing set of folders and make new folder the default
-            self.djangoProjectFolders[self.PROJECT_FOLDERS_FILENAME] = fullFolderPath
+            self.djangoProjectFolders[self.RECENT_FOLDER] = fullFolderPath
             self.djangoProjectFolders[self.OTHER_DJANGO_PROJECTS].add(fullFolderPath)
-        self.fileOps.pickleThis(self.djangoProjectFolders, self.PROJECT_FOLDERS_FILENAME)
-        print("Saved folder path ", fullFolderPath)
+        self.fileOps.pickleThis(self.djangoProjectFolders, self.PROJECT_FOLDERS_PICKLE_FILENAME)
+        print("Saved this folder path as a known Django project ", fullFolderPath)
         
 #-----------------------------------------------             
 #-----------------------------------------------
@@ -148,13 +148,25 @@ class ProgramParameters:
 #-----------------------------------------------
 #-----------------------------------------------
 
-class UserInput:
+class MenuResponses:#For having common return values between main menu and sub menus. Every submenu (which returns back to main menu) has to compulsorily return a MenuResponse object
+    def __init__(self):        
+        self.NEW_DJANGO_PROJECT_FOLDER_SELECTED = 'newProjectFolderCreated'
+        self.DJANGO_PROJECT_FOLDER_NAME_WITH_PATH = "folderNameWithPath"
+        #Each submenu that needs to return some value would have to return a unique response key. That's
+        #how the main menu will know which submenu response is being returned, and the main menu will be
+        #able to use if cases to perform appropriate actions. 
+        self.response = {
+                         self.NEW_DJANGO_PROJECT_FOLDER_SELECTED: None,
+                         self.DJANGO_PROJECT_FOLDER_NAME_WITH_PATH: None,
+                        }
+        
+class UserInput:#To ask the user for a valid integer in the range of the menu ordinals displayed
     def __init__(self, options):
         self.options = options
         
     def getInput(self):        
         i = 1
-        for option in self.options:
+        for option in self.options:#display menu options with ordinals
             print(str(i)+".", option.optionName)
             i = i + 1
         choice = input("Your choice (enter a number)? ")
@@ -199,47 +211,15 @@ class FolderChoiceMenu:#GUI
                 retVal = fileOps.folderSlash(folderChosen)
         return retVal
     
-class MainMenu:#Commandline
-    def __init__(self, activeFolder):
-        self.activeFolder = activeFolder
-        self.folderCreation = SubMenu_CreateDjangoProject(["Select folder in which you want to create your Django project"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI
-        self.exitOption = SubMenu_Exit()
-        self.options = [self.folderCreation, self.exitOption]
-        self.userInput = UserInput(self.options)
-        menuName = "\nMain Menu";print(menuName);print(len(menuName)*'-')        
-    
-    def showMenu(self):
-        choice = None   
-        while choice == None:
-            choice = self.userInput.getInput()
-        self.options[choice].showMenu()#invoke the menu from one of the objects of menus stored in self.options
-    
-class SubMenu_Exit:
+class Exit_SubMenu:
     def __init__(self):
         self.optionName = "Exit"
     def showMenu(self):
         print('Exiting program...')
         exit()
         
-
-class SubMenu_SelectFolderForNewDjangoProject:#allows creating a new Django project
-    def __init__(self):
-        self.folderCreation = SubMenu_CreateDjangoProject(["Select folder in which you want to create your Django project"], [""])#The lists allow showing multiple lines of text in the GUI
-        self.folderSelection = SubMenu_SelectDjangoFolder(["Select existing project folder"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI        
-        self.exitOption = SubMenu_Exit()
-        self.options = [self.folderSelection, self.folderCreation, self.exitOption]
-        self.userInput = UserInput(self.options)
-        menuName = "\nDjango project creation menu";print(menuName);print(len(menuName)*'-')
-    
-    def showMenu(self):     
-        choice = None   
-        while choice == None:
-            choice = self.userInput.getInput()
-        folderNameWithPath = self.options[choice].showMenu()#invoke the menu from one of the objects of menus stored in self.options
-        return folderNameWithPath
-
         
-class SubMenu_CreateDjangoProject:#ask user to show the root folder of a Django project
+class CreateDjangoProject_SubMenu:#ask user to show the root folder of a Django project
     def __init__(self, topText, bottomText):
         self.optionName = "Create a new Django project"
         self.topText = topText
@@ -248,18 +228,22 @@ class SubMenu_CreateDjangoProject:#ask user to show the root folder of a Django 
     def showMenu(self):
         folderChoice = FolderChoiceMenu()
         folderChoice.showUserTheMenu(self.topText, self.bottomText)
-        folderNameWithPath = folderChoice.getUserChoice()
+        folderNameWithPath = folderChoice.getUserChoice() #TODO: check if name given by user is valid
+        folderSuccessfullyCreated = None
         if not folderNameWithPath:
             folderNameWithPath = None
             print('No Django folder specified.')
         else:
-            successfullyCreated = self.__createDjangoProject__(folderNameWithPath)
-        return folderNameWithPath, successfullyCreated
+            folderSuccessfullyCreated = self.__createDjangoProject__(folderNameWithPath)
+        rval = MenuResponses()
+        rval.response[rval.DJANGO_PROJECT_FOLDER_NAME_WITH_PATH] = folderNameWithPath
+        rval.response[rval.NEW_DJANGO_PROJECT_FOLDER_SELECTED] = folderSuccessfullyCreated 
+        return rval
     
     def __createDjangoProject__(self, folderNameWithPath):
         projectCreated = False
         projectName = input("\nWhat name would you like to give your project (simply press Enter if you want to exit)? ")
-        if projectName:#TODO: check if name is valid
+        if projectName:#TODO: check if name given by user is valid
             os.chdir(folderNameWithPath)
             print("Changed working directory to: ", os.getcwd())
             #---create the Django project
@@ -272,11 +256,11 @@ class SubMenu_CreateDjangoProject:#ask user to show the root folder of a Django 
             #TODO: verify that it is created. Errorhandling
             projectCreated = True
         else:
-            exit()
+            projectName = None
         return projectCreated
         
             
-class SubMenu_SelectDjangoFolder:#ask user to show the root folder of a Django project
+class SelectDjangoFolder_SubMenu:#ask user to show the root folder of a Django project
     def __init__(self, topText, bottomText):
         self.optionName = "Select existing Django project folder"
         self.topText = topText
@@ -289,30 +273,47 @@ class SubMenu_SelectDjangoFolder:#ask user to show the root folder of a Django p
         if not folderNameWithPath:
             folderNameWithPath = None
             print('No Django folder specified.')
-        return folderNameWithPath
+        rval = MenuResponses()
+        rval.response[rval.DJANGO_PROJECT_FOLDER_NAME_WITH_PATH] = folderNameWithPath
+        rval.response[rval.NEW_DJANGO_PROJECT_FOLDER_SELECTED] = True
+        return rval
 
-        
-class MenuController:#Commandline
+ 
+class MainMenu:#Commandline
     def __init__(self):
-        self.menu = None
+        #---submenus
+        self.folderCreation = CreateDjangoProject_SubMenu(["Select folder in which you want to create your Django project"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI
+        self.folderSelection = SelectDjangoFolder_SubMenu(["Select existing project folder"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI
+        self.exitOption = Exit_SubMenu() 
+        #---menu options
+        self.options = [] 
+        #---program parameters
         self.parameters = ProgramParameters()
-        self.parameters.loadParameters()      
+        self.parameters.loadParameters() #this function will also check existing folder paths to see if they are still valid, and remove invalid folders
+                              
         if not self.parameters.djangoProjectFolders:#is empty (no known Django project)
-            self.menu = SubMenu_SelectFolderForNewDjangoProject()#allow user to specify a folder to create a new project
-            foldernameWithPath = self.menu.showMenu() 
-            self.parameters.setProjectFolderPath(foldernameWithPath)
-            self.menu = MainMenu(foldernameWithPath)           
+            self.__setMenuForNoKnownDjangoProjectMode__()                   
         else:
             print("\n\nDjango project considered: ", self.parameters.getProjectFolderPath())
-            print("You can change the project using the menu options below")          
+            print("You can change the current project using the menu options below.")          
      
-    def showMenu(self):
-        while True:
-            self.menu.showMenu()       
-     
-     
-      
-           
+    def showMenu(self):      
+        while True:#keep showing main menu until exit
+            menuName = "\nMain Menu";print(menuName);print(len(menuName)*'-')
+            userInput = UserInput(self.options)               
+            choice = userInput.getInput()
+            returnVal = self.options[choice].showMenu()#invoke the sub-menu from one of the objects of sub-menus stored in self.options
+            if returnVal.response[returnVal.NEW_DJANGO_PROJECT_FOLDER_SELECTED] == True:
+                self.__setMenuForNormalMode__()
+                self.parameters.setProjectFolderPath(returnVal.response[returnVal.DJANGO_PROJECT_FOLDER_NAME_WITH_PATH])#register the newly created project
+    
+    def __setMenuForNoKnownDjangoProjectMode__(self):
+        self.options = [self.folderCreation, self.folderSelection, self.exitOption]
+        
+    def __setMenuForNormalMode__(self):
+        self.options = [self.folderCreation, self.folderSelection, self.exitOption]                   
+    
+
 
 #-----------------------------------------------             
 #-----------------------------------------------
@@ -322,7 +323,7 @@ class MenuController:#Commandline
 if __name__ == '__main__':
     sg.theme('Dark grey 13')  #GUI's theme
 
-    menu = MenuController()
+    menu = MainMenu()
     menu.showMenu()
         
                

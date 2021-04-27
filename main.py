@@ -123,6 +123,9 @@ class ProgramParameters:
                         self.djangoProjectFolders[self.RECENT_FOLDER] = folder
                         print('Making this folder the default: ', folder)
                         break
+            else:#recent folder is valid
+                os.chdir(self.djangoProjectFolders[self.RECENT_FOLDER])#make this the current folder
+                print('Changed current working directory to: ', self.djangoProjectFolders[self.RECENT_FOLDER])
             if invalidFolderDetected:
                 self.fileOps.pickleThis(self.djangoProjectFolders, self.PROJECT_FOLDERS_PICKLE_FILENAME)            
         else:
@@ -139,8 +142,10 @@ class ProgramParameters:
         else:#add to existing set of folders and make new folder the default
             self.djangoProjectFolders[self.RECENT_FOLDER] = fullFolderPath
             self.djangoProjectFolders[self.OTHER_DJANGO_PROJECTS].add(fullFolderPath)
-        self.fileOps.pickleThis(self.djangoProjectFolders, self.PROJECT_FOLDERS_PICKLE_FILENAME)
+        self.fileOps.pickleThis(self.djangoProjectFolders, self.PROJECT_FOLDERS_PICKLE_FILENAME)        
         print("Saved this folder path as a known Django project ", fullFolderPath)
+        os.chdir(fullFolderPath)
+        print("Changed current working directory to: ", fullFolderPath)
         
 #-----------------------------------------------             
 #-----------------------------------------------
@@ -148,13 +153,13 @@ class ProgramParameters:
 #-----------------------------------------------
 #-----------------------------------------------
 
-class MenuResponses:#For having common return values between main menu and sub menus. Every submenu (which returns back to main menu) has to compulsorily return a MenuResponse object
+class MenuResponses:#For having common return values between main menu and sub menus. Every submenu which needs to return some data to main menu can return a MenuResponse object
     def __init__(self):        
         self.NEW_DJANGO_PROJECT_FOLDER_SELECTED = 'newProjectFolderCreated'
         self.DJANGO_PROJECT_FOLDER_NAME_WITH_PATH = "folderNameWithPath"
         #Each submenu that needs to return some value would have to return a unique response key. That's
         #how the main menu will know which submenu response is being returned, and the main menu will be
-        #able to use if cases to perform appropriate actions. 
+        #able to use if then statements to perform appropriate actions. 
         self.response = {
                          self.NEW_DJANGO_PROJECT_FOLDER_SELECTED: None,
                          self.DJANGO_PROJECT_FOLDER_NAME_WITH_PATH: None,
@@ -214,10 +219,22 @@ class FolderChoiceMenu:#GUI
 class Exit_SubMenu:
     def __init__(self):
         self.optionName = "Exit"
-    def showMenu(self):
+    def execute(self):
         print('Exiting program...')
         exit()
         
+class CommandlineExecutor:
+    def __init__(self, command):
+        self.command = command
+    
+    def execute(self):
+        #command = ['django-admin', 'startproject', projectName]
+        #subprocess.check_call(command)
+        #subprocess.check_call(shlex.split(command))
+        process = subprocess.Popen(shlex.split(self.command), stdout=subprocess.PIPE) #TODO: implement error handling
+        output, error = process.communicate()
+        print("Output: ", output)
+        print("Error: ", error)                
         
 class CreateDjangoProject_SubMenu:#ask user to show the root folder of a Django project
     def __init__(self, topText, bottomText):
@@ -225,7 +242,7 @@ class CreateDjangoProject_SubMenu:#ask user to show the root folder of a Django 
         self.topText = topText
         self.bottomText = bottomText
     
-    def showMenu(self):
+    def execute(self):
         folderChoice = FolderChoiceMenu()
         folderChoice.showUserTheMenu(self.topText, self.bottomText)
         folderNameWithPath = folderChoice.getUserChoice() #TODO: check if name given by user is valid
@@ -247,36 +264,43 @@ class CreateDjangoProject_SubMenu:#ask user to show the root folder of a Django 
             os.chdir(folderNameWithPath)
             print("Changed working directory to: ", os.getcwd())
             #---create the Django project
-            command = 'django-admin startproject ' + projectName
-            #command = ['django-admin', 'startproject', projectName]
-            #subprocess.check_call(command)
-            #subprocess.check_call(shlex.split(command))
-            process = subprocess.Popen(shlex.split(command), stdout=subprocess.PIPE) #TODO: implement error handling
-            output,error=process.communicate();print(output);print(error)
+            cmd = CommandlineExecutor('django-admin startproject ' + projectName)
+            cmd.execute()
             #TODO: verify that it is created. Errorhandling
             projectCreated = True
         else:
             projectName = None
         return projectCreated
         
-            
+
 class SelectDjangoFolder_SubMenu:#ask user to show the root folder of a Django project
     def __init__(self, topText, bottomText):
         self.optionName = "Select existing Django project folder"
         self.topText = topText
         self.bottomText = bottomText
     
-    def showMenu(self):
+    def execute(self):
         folderChoice = FolderChoiceMenu()
         folderChoice.showUserTheMenu(self.topText, self.bottomText)
         folderNameWithPath = folderChoice.getUserChoice()
+        folderSpecified = True
         if not folderNameWithPath:
             folderNameWithPath = None
+            folderSpecified = False
             print('No Django folder specified.')
         rval = MenuResponses()
         rval.response[rval.DJANGO_PROJECT_FOLDER_NAME_WITH_PATH] = folderNameWithPath
-        rval.response[rval.NEW_DJANGO_PROJECT_FOLDER_SELECTED] = True
+        rval.response[rval.NEW_DJANGO_PROJECT_FOLDER_SELECTED] = folderSpecified
         return rval
+    
+class RunServer_SubMenu:
+    def __init__(self):
+        self.optionName = "Run the default server"
+    
+    def execute(self):    
+        print("Running default server...")
+        cmd = CommandlineExecutor("python manage.py runserver &")
+        cmd.execute()
 
  
 class MainMenu:#Commandline
@@ -284,34 +308,38 @@ class MainMenu:#Commandline
         #---submenus
         self.folderCreation = CreateDjangoProject_SubMenu(["Select folder in which you want to create your Django project"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI
         self.folderSelection = SelectDjangoFolder_SubMenu(["Select existing project folder"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI
+        self.runServer = RunServer_SubMenu()
         self.exitOption = Exit_SubMenu() 
         #---menu options
         self.options = [] 
         #---program parameters
         self.parameters = ProgramParameters()
         self.parameters.loadParameters() #this function will also check existing folder paths to see if they are still valid, and remove invalid folders
-                              
+        
         if not self.parameters.djangoProjectFolders:#is empty (no known Django project)
             self.__setMenuForNoKnownDjangoProjectMode__()                   
         else:
+            self.__setMenuForNormalMode__()
             print("\n\nDjango project considered: ", self.parameters.getProjectFolderPath())
             print("You can change the current project using the menu options below.")          
-     
-    def showMenu(self):      
+    
+    def execute(self):      
         while True:#keep showing main menu until exit
             menuName = "\nMain Menu";print(menuName);print(len(menuName)*'-')
             userInput = UserInput(self.options)               
             choice = userInput.getInput()
-            returnVal = self.options[choice].showMenu()#invoke the sub-menu from one of the objects of sub-menus stored in self.options
-            if returnVal.response[returnVal.NEW_DJANGO_PROJECT_FOLDER_SELECTED] == True:
-                self.__setMenuForNormalMode__()
-                self.parameters.setProjectFolderPath(returnVal.response[returnVal.DJANGO_PROJECT_FOLDER_NAME_WITH_PATH])#register the newly created project
+            returnVal = self.options[choice].execute()#invoke the sub-menu from one of the objects of sub-menus stored in self.options
+            if not None: #some data is returned by the submenu
+                #---perform action based on the type of data being returned
+                if returnVal.response[returnVal.NEW_DJANGO_PROJECT_FOLDER_SELECTED] == True:
+                    self.__setMenuForNormalMode__()
+                    self.parameters.setProjectFolderPath(returnVal.response[returnVal.DJANGO_PROJECT_FOLDER_NAME_WITH_PATH])#register the newly created project
     
     def __setMenuForNoKnownDjangoProjectMode__(self):
         self.options = [self.folderCreation, self.folderSelection, self.exitOption]
         
     def __setMenuForNormalMode__(self):
-        self.options = [self.folderCreation, self.folderSelection, self.exitOption]                   
+        self.options = [self.runServer, self.folderCreation, self.folderSelection, self.exitOption]                   
     
 
 
@@ -324,7 +352,7 @@ if __name__ == '__main__':
     sg.theme('Dark grey 13')  #GUI's theme
 
     menu = MainMenu()
-    menu.showMenu()
+    menu.execute()
         
                
         

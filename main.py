@@ -60,30 +60,59 @@ class FileOperations:
     
     def isThisValidDirectory(self, folderpath):
         return os.path.exists(folderpath)
-
-    """ Move file to another directory. Renaming while moving is possible """
-    def moveFile(self, existingPath, existingFilename, newPath, newFilename):
-        shutil.move(existingPath + existingFilename, newPath + newFilename)    
     
-    """ Adds a slash at the end of the folder name if it isn't already present """
+    def moveFile(self, existingPath, existingFilename, newPath, newFilename):
+        """ Move file to another directory. Renaming while moving is possible """
+        shutil.move(existingPath + existingFilename, newPath + newFilename)    
+        
     def folderSlash(self, folderNameWithPath):
+        """ Adds a slash at the end of the folder name if it isn't already present """
         if folderNameWithPath.endswith('/') == False: 
             folderNameWithPath = folderNameWithPath + '/' 
         return folderNameWithPath
-    
-    """ Writes a datastructure to a pickle file. Overwrites old file by default """
+        
     def pickleThis(self, datastructure, filename):
+        """ Writes a datastructure to a pickle file. Overwrites old file by default """
         fHandle = open(filename, "wb") #TODO: try-catch   
         pickle.dump(datastructure, fHandle)
         fHandle.close()
-        
-    """ Reads a datastructure from a pickle file """
+            
     def unPickleThis(self, filename):
+        """ Reads a datastructure from a pickle file """
         fHandle = open(filename, "rb") #TODO: try-catch   
         datastructure = pickle.load(fHandle)
         fHandle.close() 
         return datastructure   
+        
+    def getFileNamesOfFilesInAllFoldersAndSubfolders(self, folderToConsider):
+        """ Get names of files in each folder and subfolder. Also get sizes of files """ 
+        #TODO: what about symlinks?
+        FULL_FOLDER_PATH = 0
+        #SUBDIRECTORIES = 1
+        FILES_IN_FOLDER = 2        
+        folderPaths = []; filesInFolder = []#; fileSizes = []
+        result = os.walk(folderToConsider)        
+        for oneFolder in result:
+            folderPath = self.folderSlash(oneFolder[FULL_FOLDER_PATH])
+            folderPaths.append(folderPath)
+            #subdir = oneFolder[SUBDIRECTORIES]
+            filesInThisFolder = oneFolder[FILES_IN_FOLDER]
+#             sizeOfFiles = []
+#             for filename in filesInThisFolder:
+#                 fileProperties = os.stat(folderPath + filename)
+#                 sizeOfFiles.append(fileProperties.st_size)
+#             fileSizes.append(sizeOfFiles)
+            filesInFolder.append(filesInThisFolder)    
+        #Note: files inside folderPaths[0] will be stored in filesInFolder[0]...and so on        
+        return folderPaths, filesInFolder#, fileSizes #returns as [fullFolderPath1, fullFolderPath2, ...], [[filename1, filename2, filename3, ...], [], []], [[filesize1, filesize2, filesize3, ...], [], []]    
     
+    def addThisLineAtSpecifiedLocationInFile(self, fileWithPath, lineToAdd, sequenceToSearch):
+        """ Searches a text file for a sequence of strings as mentioned in sequenceToSearch
+            and places lineToAdd in the position of the last string in sequenceToSearch. The
+            last string in sequenceToSearch is moved to the next line. The whole file is read
+            into memory, the insertion is done and then the file is written, so this function
+            is appropriate only for small files that will easily fit in memory. """
+        pass
 
 #-----------------------------------------------             
 #-----------------------------------------------
@@ -143,7 +172,7 @@ class ProgramParameters:
             self.djangoProjectFolders[self.RECENT_FOLDER] = fullFolderPath
             self.djangoProjectFolders[self.OTHER_DJANGO_PROJECTS].add(fullFolderPath)
         self.fileOps.pickleThis(self.djangoProjectFolders, self.PROJECT_FOLDERS_PICKLE_FILENAME)        
-        print("Saved this folder path as a known Django project ", fullFolderPath)
+        print("Saved this folder pathToSettings as a known Django project ", fullFolderPath)
         os.chdir(fullFolderPath)
         print("Changed current working directory to: ", fullFolderPath)
         
@@ -237,7 +266,8 @@ class CommandlineExecutor:
         print("Error: ", error)  
         
     def executeCommandAndDetach(self):
-        subprocess.Popen(shlex.split(self.command), close_fds=True)       
+        #subprocess.Popen(shlex.split(self.command), close_fds=True)
+        os.system(self.command)       
         
 class CreateDjangoProject_SubMenu:#ask user to show the root folder of a Django project
     def __init__(self, topText, bottomText):
@@ -303,24 +333,70 @@ class RunServer_SubMenu:
     
     def execute(self):    
         print("Running default server...")
-#         cmd = CommandlineExecutor(self.commandToRun)
-#         cmd.executeCommandAndDetach()
-        #os.spawnl(os.P_NOWAITO, 'some_long_running_command')
-        os.system(self.commandToRun)
+        cmd = CommandlineExecutor(self.commandToRun)
+        cmd.executeCommandAndDetach()        
 
- 
+class CreateApp_SubMenu:
+    def __init__(self, currentProjectFunctionHandle):
+        self.optionName = "Create an app for the current project"
+        self.getCurrentProjectPath = currentProjectFunctionHandle        
+        self.settingsFilename = "settings.py"
+        self.pathToSettings = None
+        self.appName = None
+        self.fileOps = FileOperations()
+    
+    def execute(self):
+        self.appName = input("Enter name of the app to create: ") #TODO: verify if the input is valid
+        if not self.appName:
+            print("No appropriate app name specified")
+        else:
+            print("Creating app ", self.appName)
+            #---execute the standard app creation command
+            self.commandToRun = "python manage.py startapp " + self.appName 
+            cmd = CommandlineExecutor(self.commandToRun)
+            cmd.executeCommand() #TODO: verify that app got created
+            #---automatically register the app in settings.py            
+            folderPaths, filesInFolder = self.fileOps.getFileNamesOfFilesInAllFoldersAndSubfolders(self.getCurrentProjectPath())
+            #---find settings.py (it'll be in the first level of subdirectories)
+            foundSettingsFile = False
+            for folderOrdinal in range(len(folderPaths)):#for each folder
+                self.pathToSettings = folderPaths[folderOrdinal]
+                filenames = filesInFolder[folderOrdinal]                
+                print('Searching for settings.py in ', self.pathToSettings)                
+                for fileOrdinal in range(len(filenames)):#for each file in the folder
+                    filename = filesInFolder[folderOrdinal][fileOrdinal]
+                    if filename == self.settingsFilename:
+                        foundSettingsFile = True
+                        break
+                    if foundSettingsFile:
+                        break
+            if foundSettingsFile:
+                self.pathToSettings = self.fileOps.folderSlash(self.pathToSettings)#this is the pathToSettings to the settings file
+                self.pathToSettings = self.pathToSettings + self.settingsFilename
+                self.__registerAppInSettings__()
+            else:
+                print("ERROR: The settings.py file could not be found for ", self.getCurrentProjectPath(), ". Something is wrong. Please check.")
+    
+    def __registerAppInSettings__(self):
+        lineToAdd = "'" + self.appName + ".apps." + self.appName[0].upper() + self.appName[1:].lower() + "Config" + "', #user created app"
+        sequenceToSearch = ["INSTALLED_APPS", "]"]
+        self.fileOps.addThisLineAtSpecifiedLocationInFile(self.pathToSettings, lineToAdd, sequenceToSearch)
+        self.pathToSettings = None #so that if the current project is changed in main menu, the earlier detected settings file is not even accidentally used
+        self.appName = None
+
 class MainMenu:#Commandline
     def __init__(self):
+        #---program parameters
+        self.parameters = ProgramParameters()
+        self.parameters.loadParameters() #this function will also check existing folder paths to see if they are still valid, and remove invalid folders        
         #---submenus
         self.folderCreation = CreateDjangoProject_SubMenu(["Select folder in which you want to create your Django project"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI
         self.folderSelection = SelectDjangoFolder_SubMenu(["Select existing project folder"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI
         self.runServer = RunServer_SubMenu()
+        self.createApp = CreateApp_SubMenu(self.parameters.getProjectFolderPath)#passing function handle (TODO: see if coupling like this can be avoided)
         self.exitOption = Exit_SubMenu() 
         #---menu options
         self.options = [] 
-        #---program parameters
-        self.parameters = ProgramParameters()
-        self.parameters.loadParameters() #this function will also check existing folder paths to see if they are still valid, and remove invalid folders
         
         if not self.parameters.djangoProjectFolders:#is empty (no known Django project)
             self.__setMenuForNoKnownDjangoProjectMode__()                   
@@ -335,7 +411,7 @@ class MainMenu:#Commandline
             userInput = UserInput(self.options)               
             choice = userInput.getInput()
             returnVal = self.options[choice].execute()#invoke the sub-menu from one of the objects of sub-menus stored in self.options
-            if not None: #some data is returned by the submenu
+            if not returnVal == None: #some data is returned by the submenu
                 #---perform action based on the type of data being returned
                 if returnVal.response[returnVal.NEW_DJANGO_PROJECT_FOLDER_SELECTED] == True:
                     self.__setMenuForNormalMode__()
@@ -345,7 +421,11 @@ class MainMenu:#Commandline
         self.options = [self.folderCreation, self.folderSelection, self.exitOption]
         
     def __setMenuForNormalMode__(self):
-        self.options = [self.runServer, self.folderCreation, self.folderSelection, self.exitOption]                   
+        self.options = [self.runServer, 
+                        self.folderCreation, 
+                        self.folderSelection,
+                        self.createApp, 
+                        self.exitOption]                   
     
 
 

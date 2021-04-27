@@ -106,13 +106,28 @@ class FileOperations:
         #Note: files inside folderPaths[0] will be stored in filesInFolder[0]...and so on        
         return folderPaths, filesInFolder#, fileSizes #returns as [fullFolderPath1, fullFolderPath2, ...], [[filename1, filename2, filename3, ...], [], []], [[filesize1, filesize2, filesize3, ...], [], []]    
     
-    def addThisLineAtSpecifiedLocationInFile(self, fileWithPath, lineToAdd, sequenceToSearch):
+    def addThisLineAtSpecifiedLocationInFile(self, fileWithPath, lineToAdd, sequenceToSearch):#TODO: This function needs to be improved
         """ Searches a text file for a sequence of strings as mentioned in sequenceToSearch
             and places lineToAdd in the position of the last string in sequenceToSearch. The
             last string in sequenceToSearch is moved to the next line. The whole file is read
             into memory, the insertion is done and then the file is written, so this function
             is appropriate only for small files that will easily fit in memory. """
-        pass
+        linesInFile = self.readFromFile(fileWithPath)
+        sequenceOrdinal = 0
+        lineOrdinal = 0
+        addedLine = False
+        for lin in linesInFile:
+            if sequenceToSearch[sequenceOrdinal] in lin:
+                if sequenceOrdinal + 1 == len(sequenceToSearch):#if the last part of the sequence is found
+                    linesInFile.insert(lineOrdinal, lineToAdd)
+                    addedLine = True
+                else:
+                    sequenceOrdinal = sequenceOrdinal + 1
+            lineOrdinal = lineOrdinal + 1
+        if addedLine:
+            self.writeLinesToFile(fileWithPath, linesInFile)
+        else:
+            print("ERROR: Could not add add "+lineToAdd+" into "+fileWithPath+". Please check what went wrong.")
 
 #-----------------------------------------------             
 #-----------------------------------------------

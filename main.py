@@ -227,14 +227,17 @@ class CommandlineExecutor:
     def __init__(self, command):
         self.command = command
     
-    def execute(self):
+    def executeCommand(self):
         #command = ['django-admin', 'startproject', projectName]
         #subprocess.check_call(command)
         #subprocess.check_call(shlex.split(command))
         process = subprocess.Popen(shlex.split(self.command), stdout=subprocess.PIPE) #TODO: implement error handling
         output, error = process.communicate()
         print("Output: ", output)
-        print("Error: ", error)                
+        print("Error: ", error)  
+        
+    def executeCommandAndDetach(self):
+        subprocess.Popen(shlex.split(self.command), close_fds=True)       
         
 class CreateDjangoProject_SubMenu:#ask user to show the root folder of a Django project
     def __init__(self, topText, bottomText):
@@ -265,7 +268,7 @@ class CreateDjangoProject_SubMenu:#ask user to show the root folder of a Django 
             print("Changed working directory to: ", os.getcwd())
             #---create the Django project
             cmd = CommandlineExecutor('django-admin startproject ' + projectName)
-            cmd.execute()
+            cmd.executeCommand()
             #TODO: verify that it is created. Errorhandling
             projectCreated = True
         else:
@@ -296,11 +299,14 @@ class SelectDjangoFolder_SubMenu:#ask user to show the root folder of a Django p
 class RunServer_SubMenu:
     def __init__(self):
         self.optionName = "Run the default server"
+        self.commandToRun = "python manage.py runserver &"
     
     def execute(self):    
         print("Running default server...")
-        cmd = CommandlineExecutor("python manage.py runserver &")
-        cmd.execute()
+#         cmd = CommandlineExecutor(self.commandToRun)
+#         cmd.executeCommandAndDetach()
+        #os.spawnl(os.P_NOWAITO, 'some_long_running_command')
+        os.system(self.commandToRun)
 
  
 class MainMenu:#Commandline

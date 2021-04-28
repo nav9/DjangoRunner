@@ -142,8 +142,9 @@ class FileOperations:
 #-----------------------------------------------
 #-----------------------------------------------
 class ProgramParameters:
-    def __init__(self):
+    def __init__(self, djangoRunnerDirectory):
         self.fileOps = FileOperations()
+        self.djangoRunnerDirectory = djangoRunnerDirectory
         self.PROJECT_FOLDERS_PICKLE_FILENAME = "projectFolders.pickle"
         self.RECENT_FOLDER = "RecentFolder"
         self.OTHER_DJANGO_PROJECTS = "OtherProjects"
@@ -180,7 +181,7 @@ class ProgramParameters:
                     os.chdir(self.djangoProjectFolders[self.RECENT_FOLDER])#make this the current folder
                     print('Changed current working directory to: ', self.djangoProjectFolders[self.RECENT_FOLDER])
                 if invalidFolderDetected:
-                    self.fileOps.pickleThis(self.djangoProjectFolders, self.PROJECT_FOLDERS_PICKLE_FILENAME)   
+                    self.__saveKnownProjectNamesWithPaths__(self.djangoProjectFolders)   
             else:
                 print('No known Django folders stored')#TODO: avoid the double print for the same error   
         else:
@@ -197,10 +198,18 @@ class ProgramParameters:
         else:#add to existing set of folders and make new folder the default
             self.djangoProjectFolders[self.RECENT_FOLDER] = fullFolderPath
             self.djangoProjectFolders[self.OTHER_DJANGO_PROJECTS].add(fullFolderPath)
-        self.fileOps.pickleThis(self.djangoProjectFolders, self.PROJECT_FOLDERS_PICKLE_FILENAME)        
-        print("Saved this folder pathToSettings as a known Django project ", fullFolderPath)
+        self.__saveKnownProjectNamesWithPaths__(self.djangoProjectFolders)        
+        print("Saved this folder as a known Django project ", fullFolderPath)
         os.chdir(fullFolderPath)
         print("Changed current working directory to: ", fullFolderPath)
+        
+    def __saveKnownProjectNamesWithPaths__(self, projectFolders):
+        os.chdir(self.djangoRunnerDirectory)#switch to the Django folder to save program parameters
+        self.fileOps.pickleThis(projectFolders, self.PROJECT_FOLDERS_PICKLE_FILENAME)
+        if self.djangoProjectFolders[self.RECENT_FOLDER]:#if there's an active Django project, switch to it
+            print("Current folder is: ", self.djangoProjectFolders[self.RECENT_FOLDER])
+            
+        
         
 #-----------------------------------------------             
 #-----------------------------------------------
@@ -208,7 +217,7 @@ class ProgramParameters:
 #-----------------------------------------------
 #-----------------------------------------------
 
-class MenuResponses:#For having common return values between main menu and sub menus. Every submenu which needs to return some data to main menu can return a MenuResponse object
+class SubMenuReturnValues:#For having common return values between main menu and sub menus. Every submenu which needs to return some data to main menu can return a MenuResponse object
     def __init__(self):        
         self.NEW_DJANGO_PROJECT_FOLDER_SELECTED = 'newProjectFolderCreated'
         self.DJANGO_PROJECT_FOLDER_NAME_WITH_PATH = "folderNameWithPath"
@@ -307,14 +316,15 @@ class CreateDjangoProject_SubMenu:#ask user to show the root folder of a Django 
         folderChoice.showUserTheMenu(self.topText, self.bottomText)
         folderNameWithPath = folderChoice.getUserChoice() #TODO: check if name given by user is valid
         folderSuccessfullyCreated = None
+        rval = SubMenuReturnValues()
         if not folderNameWithPath:
             folderNameWithPath = None
             print('No Django folder specified.')
         else:
-            folderNameWithPath, folderSuccessfullyCreated = self.__createDjangoProject__(folderNameWithPath)
-        rval = MenuResponses()
-        rval.response[rval.DJANGO_PROJECT_FOLDER_NAME_WITH_PATH] = folderNameWithPath
-        rval.response[rval.NEW_DJANGO_PROJECT_FOLDER_SELECTED] = folderSuccessfullyCreated 
+            folderNameWithPath, folderSuccessfullyCreated = self.__createDjangoProject__(folderNameWithPath) 
+            if folderSuccessfullyCreated:           
+                rval.response[rval.DJANGO_PROJECT_FOLDER_NAME_WITH_PATH] = folderNameWithPath
+                rval.response[rval.NEW_DJANGO_PROJECT_FOLDER_SELECTED] = folderSuccessfullyCreated 
         return rval
     
     def __createDjangoProject__(self, folderNameWithPath):
@@ -322,16 +332,19 @@ class CreateDjangoProject_SubMenu:#ask user to show the root folder of a Django 
         projectName = input("\nWhat name would you like to give your project (simply press Enter if you want to exit)? ")        
         if projectName:#TODO: check if name given by user is valid
             fileOps = FileOperations()
-            folderNameWithPath = folderNameWithPath + fileOps.folderSlash(projectName)
+            print('User supplied foldername: ', folderNameWithPath)
             os.chdir(folderNameWithPath)
-            print("Changed working directory to: ", os.getcwd())
+            folderNameWithPath = folderNameWithPath + fileOps.folderSlash(projectName)
+            print('After adding user supplied project name: ', folderNameWithPath)
             #---create the Django project
             cmd = CommandlineExecutor('django-admin startproject ' + projectName)
             cmd.executeCommand()
             #TODO: verify that it is created. Errorhandling
-            projectCreated = True
+            projectCreated = True         
+            print("Django project created: ", projectName)            
         else:
             projectName = None
+            folderNameWithPath = None
         return folderNameWithPath, projectCreated
         
 
@@ -350,7 +363,7 @@ class SelectDjangoFolder_SubMenu:#ask user to show the root folder of a Django p
             folderNameWithPath = None
             folderSpecified = False
             print('No Django folder specified.')
-        rval = MenuResponses()
+        rval = SubMenuReturnValues()
         rval.response[rval.DJANGO_PROJECT_FOLDER_NAME_WITH_PATH] = folderNameWithPath
         rval.response[rval.NEW_DJANGO_PROJECT_FOLDER_SELECTED] = folderSpecified
         return rval
@@ -416,8 +429,8 @@ class CreateApp_SubMenu:
 
 class MainMenu:#Commandline
     def __init__(self):
-        #---program parameters
-        self.parameters = ProgramParameters()
+        #---program parameters        
+        self.parameters = ProgramParameters(os.getcwd())#CAUTION/BUG: This assumes that the program is being run from the DjangoRunner folder, so this path will be used for saving all program parameters
         self.parameters.loadParameters() #this function will also check existing folder paths to see if they are still valid, and remove invalid folders        
         #---submenus
         self.folderCreation = CreateDjangoProject_SubMenu(["Select folder in which you want to create your Django project"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI

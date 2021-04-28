@@ -106,7 +106,7 @@ class FileOperations:
         #Note: files inside folderPaths[0] will be stored in filesInFolder[0]...and so on        
         return folderPaths, filesInFolder#, fileSizes #returns as [fullFolderPath1, fullFolderPath2, ...], [[filename1, filename2, filename3, ...], [], []], [[filesize1, filesize2, filesize3, ...], [], []]    
     
-    def addThisLineAtSpecifiedLocationInFile(self, fileWithPath, lineToAdd, sequenceToSearch):#TODO: This function needs to be improved
+    def addThisLineAtSpecifiedLocationInFile(self, fileWithPath, lineToAdd, sequenceToSearch):#TODO: This function needs to be made more efficient. There are ways of inserting into a file with a shorter technique
         """ Searches a text file for a sequence of strings as mentioned in sequenceToSearch
             and places lineToAdd in the position of the last string in sequenceToSearch. The
             last string in sequenceToSearch is moved to the next line. The whole file is read
@@ -148,38 +148,41 @@ class ProgramParameters:
         self.RECENT_FOLDER = "RecentFolder"
         self.OTHER_DJANGO_PROJECTS = "OtherProjects"
         self.djangoProjectFolders = {} #stores the most recent project folder and other known folders
-        
+    
     def loadParameters(self):
         #---load project folder names
         if self.fileOps.isValidFile(self.PROJECT_FOLDERS_PICKLE_FILENAME):#if file exists, load data
             self.djangoProjectFolders = self.fileOps.unPickleThis(self.PROJECT_FOLDERS_PICKLE_FILENAME)
-            #---check if folders are still valid. Remove invalid ones
-            folders = self.djangoProjectFolders[self.OTHER_DJANGO_PROJECTS]
-            validFolders = set()
-            invalidFolderDetected = False
-            for folder in folders:
-                print('Known folder: ', folder)
-                if self.fileOps.isThisValidDirectory(folder): 
-                    validFolders.add(folder)
-                else: 
-                    invalidFolderDetected = True
-                    print('WARNING: This folder does not exist. Removing from stored list of folders: ', folder)
-                    if folder == self.djangoProjectFolders[self.RECENT_FOLDER]:#recent folder is no longer valid and got removed
-                        self.djangoProjectFolders[self.RECENT_FOLDER] = None
-            self.djangoProjectFolders[self.OTHER_DJANGO_PROJECTS] = validFolders
-            if self.djangoProjectFolders[self.RECENT_FOLDER] == None:
-                if not self.djangoProjectFolders[self.OTHER_DJANGO_PROJECTS]:#no valid folders present
-                    self.djangoProjectFolders = {}
-                else:#take the first available folder as the default
-                    for folder in self.djangoProjectFolders[self.OTHER_DJANGO_PROJECTS]:
-                        self.djangoProjectFolders[self.RECENT_FOLDER] = folder
-                        print('Making this folder the default: ', folder)
-                        break
-            else:#recent folder is valid
-                os.chdir(self.djangoProjectFolders[self.RECENT_FOLDER])#make this the current folder
-                print('Changed current working directory to: ', self.djangoProjectFolders[self.RECENT_FOLDER])
-            if invalidFolderDetected:
-                self.fileOps.pickleThis(self.djangoProjectFolders, self.PROJECT_FOLDERS_PICKLE_FILENAME)            
+            if self.djangoProjectFolders:                
+                #---check if folders are still valid. Remove invalid ones
+                folders = self.djangoProjectFolders[self.OTHER_DJANGO_PROJECTS]
+                validFolders = set()
+                invalidFolderDetected = False
+                for folder in folders:
+                    print('Known folder: ', folder)
+                    if self.fileOps.isThisValidDirectory(folder): 
+                        validFolders.add(folder)
+                    else: 
+                        invalidFolderDetected = True
+                        print('WARNING: This folder does not exist. Removing from stored list of folders: ', folder)
+                        if folder == self.djangoProjectFolders[self.RECENT_FOLDER]:#recent folder is no longer valid and got removed
+                            self.djangoProjectFolders[self.RECENT_FOLDER] = None
+                self.djangoProjectFolders[self.OTHER_DJANGO_PROJECTS] = validFolders
+                if self.djangoProjectFolders[self.RECENT_FOLDER] == None:
+                    if not self.djangoProjectFolders[self.OTHER_DJANGO_PROJECTS]:#no valid folders present
+                        self.djangoProjectFolders = {}
+                    else:#take the first available folder as the default
+                        for folder in self.djangoProjectFolders[self.OTHER_DJANGO_PROJECTS]:
+                            self.djangoProjectFolders[self.RECENT_FOLDER] = folder
+                            print('Making this folder the default: ', folder)
+                            break
+                else:#recent folder is valid
+                    os.chdir(self.djangoProjectFolders[self.RECENT_FOLDER])#make this the current folder
+                    print('Changed current working directory to: ', self.djangoProjectFolders[self.RECENT_FOLDER])
+                if invalidFolderDetected:
+                    self.fileOps.pickleThis(self.djangoProjectFolders, self.PROJECT_FOLDERS_PICKLE_FILENAME)   
+            else:
+                print('No known Django folders stored')#TODO: avoid the double print for the same error   
         else:
             print('No known Django folders stored.')
     
@@ -217,7 +220,7 @@ class MenuResponses:#For having common return values between main menu and sub m
                          self.DJANGO_PROJECT_FOLDER_NAME_WITH_PATH: None,
                         }
         
-class UserInput:#To ask the user for a valid integer in the range of the menu ordinals displayed
+class UserInputForMenu:#To ask the user for a valid integer in the range of the menu ordinals displayed
     def __init__(self, options):
         self.options = options
         
@@ -279,24 +282,25 @@ class CommandlineExecutor:
     def __init__(self, command):
         self.command = command
     
+    #TODO: os.system is deprecated, but Popen 
     def executeCommand(self):
         #command = ['django-admin', 'startproject', projectName]
         #subprocess.check_call(command)
         #subprocess.check_call(shlex.split(command))
         process = subprocess.Popen(shlex.split(self.command), stdout=subprocess.PIPE) #TODO: implement error handling
         output, error = process.communicate()
-        print("Output: ", output)
-        print("Error: ", error)  
+        #print("Output: ", output)
+        #print("Error: ", error)  
         
     def executeCommandAndDetach(self):
-        #subprocess.Popen(shlex.split(self.command), close_fds=True)
-        os.system(self.command)       
+        subprocess.Popen(shlex.split(self.command), close_fds=True)
+        #os.system(self.command)       
         
 class CreateDjangoProject_SubMenu:#ask user to show the root folder of a Django project
     def __init__(self, topText, bottomText):
         self.optionName = "Create a new Django project"
         self.topText = topText
-        self.bottomText = bottomText
+        self.bottomText = bottomText        
     
     def execute(self):
         folderChoice = FolderChoiceMenu()
@@ -307,7 +311,7 @@ class CreateDjangoProject_SubMenu:#ask user to show the root folder of a Django 
             folderNameWithPath = None
             print('No Django folder specified.')
         else:
-            folderSuccessfullyCreated = self.__createDjangoProject__(folderNameWithPath)
+            folderNameWithPath, folderSuccessfullyCreated = self.__createDjangoProject__(folderNameWithPath)
         rval = MenuResponses()
         rval.response[rval.DJANGO_PROJECT_FOLDER_NAME_WITH_PATH] = folderNameWithPath
         rval.response[rval.NEW_DJANGO_PROJECT_FOLDER_SELECTED] = folderSuccessfullyCreated 
@@ -315,8 +319,10 @@ class CreateDjangoProject_SubMenu:#ask user to show the root folder of a Django 
     
     def __createDjangoProject__(self, folderNameWithPath):
         projectCreated = False
-        projectName = input("\nWhat name would you like to give your project (simply press Enter if you want to exit)? ")
+        projectName = input("\nWhat name would you like to give your project (simply press Enter if you want to exit)? ")        
         if projectName:#TODO: check if name given by user is valid
+            fileOps = FileOperations()
+            folderNameWithPath = folderNameWithPath + fileOps.folderSlash(projectName)
             os.chdir(folderNameWithPath)
             print("Changed working directory to: ", os.getcwd())
             #---create the Django project
@@ -326,7 +332,7 @@ class CreateDjangoProject_SubMenu:#ask user to show the root folder of a Django 
             projectCreated = True
         else:
             projectName = None
-        return projectCreated
+        return folderNameWithPath, projectCreated
         
 
 class SelectDjangoFolder_SubMenu:#ask user to show the root folder of a Django project
@@ -432,7 +438,7 @@ class MainMenu:#Commandline
     def execute(self):      
         while True:#keep showing main menu until exit
             menuName = "\nMain Menu";print(menuName);print(len(menuName)*'-')
-            userInput = UserInput(self.options)               
+            userInput = UserInputForMenu(self.options)               
             choice = userInput.getInput()
             returnVal = self.options[choice].execute()#invoke the sub-menu from one of the objects of sub-menus stored in self.options
             if not returnVal == None: #some data is returned by the submenu
@@ -461,6 +467,8 @@ class MainMenu:#Commandline
 if __name__ == '__main__':
     sg.theme('Dark grey 13')  #GUI's theme
 
+#     print(os.environ['PATH'])
+    
     menu = MainMenu()
     menu.execute()
         

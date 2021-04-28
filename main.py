@@ -371,7 +371,7 @@ class SelectDjangoFolder_SubMenu:#ask user to show the root folder of a Django p
 class RunServer_SubMenu:
     def __init__(self):
         self.optionName = "Run the default server"
-        self.commandToRun = "python manage.py runserver &"
+        self.commandToRun = "python manage.py runserver" #"python manage.py runserver &"
     
     def execute(self):    
         print("Running default server...")

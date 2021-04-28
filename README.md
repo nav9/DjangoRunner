@@ -1,5 +1,5 @@
 ![Alt text](gallery/mainMenu.png?raw=true "Main menu")  
-![Alt text](gallery/Select ExistingFolderMenu.png?raw=true "Choosing a folder")  
+![Alt text](gallery/SelectExistingFolderMenu.png?raw=true "Choosing a folder")  
 
 # Django Runner
 A program that slightly simplifies Django use, by providing a menu-driven interface. This project is under construction, but a few functionalities are already available.  

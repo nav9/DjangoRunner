@@ -28,7 +28,8 @@ class GlobalConstants:
     
 class FileOperations:
     def __init__(self):
-        pass
+        self.filePresentInAppsFolder = "apps.py"
+        self.slash = "/"
    
     def isValidFile(self, filenameWithPath):#used to check if file exists, without throwing exception
         return os.path.isfile(filenameWithPath)   
@@ -67,8 +68,8 @@ class FileOperations:
         
     def folderSlash(self, folderNameWithPath):
         """ Adds a slash at the end of the folder name if it isn't already present """
-        if folderNameWithPath.endswith('/') == False: 
-            folderNameWithPath = folderNameWithPath + '/' 
+        if folderNameWithPath.endswith(self.slash) == False: 
+            folderNameWithPath = folderNameWithPath + self.slash 
         return folderNameWithPath
         
     def pickleThis(self, datastructure, filename):
@@ -157,6 +158,26 @@ class FileOperations:
             self.writeLinesToFile(fileWithPath, linesInFile)
         else:
             print("ERROR: Could not add add "+lineToAdd+" into "+fileWithPath+". Please check what went wrong.")
+            
+    def getAppNames(self, currentProjectPath):
+        #---automatically register the app in settings.py            
+        folderPaths, filesInFolder = self.getFileNamesOfFilesInAllFoldersAndSubfolders(currentProjectPath)
+        #---find settings.py (it'll be in the first level of subdirectories)
+        appNames = []
+        pathToTheFile = None
+        for folderOrdinal in range(len(folderPaths)):#for each folder
+            pathToTheFile = folderPaths[folderOrdinal]
+            filenames = filesInFolder[folderOrdinal]                
+            print('Searching for apps in ', pathToTheFile)
+            for fileOrdinal in range(len(filenames)):#for each file in the folder
+                filename = filesInFolder[folderOrdinal][fileOrdinal]
+                if filename == self.filePresentInAppsFolder:#this folder contains the filename being searched for, so this is an app folder
+                    print("Found app: ", pathToTheFile)
+        print("No apps found")   
+        return appNames  
+    
+    def extractAppName(self, fullAppPath):#TODO: If there is a sub-app, this function would need to be modified to cater to it
+        return fullAppPath.split(self.slash)[-2] 
 
 #-----------------------------------------------             
 #-----------------------------------------------
@@ -254,16 +275,27 @@ class SubMenuReturnValues:#For having common return values between main menu and
 class UserInputForMenu:#To ask the user for a valid integer in the range of the menu ordinals displayed
     def __init__(self, options):
         self.options = options
+        self.menuOrdinal = None
         
-    def getInput(self):        
-        i = 1
+    def getInputFromMenuObjects(self):        
+        self.menuOrdinal = 1
         for option in self.options:#display menu options with ordinals
-            print(str(i)+".", option.optionName)
-            i = i + 1
+            print(str(self.menuOrdinal)+".", option.optionName)
+            self.menuOrdinal = self.menuOrdinal + 1
+        return self.__getUserChoice__()
+
+    def getInputUsingMenuStrings(self):        
+        self.menuOrdinal = 1
+        for option in self.options:#display menu options with ordinals
+            print(str(self.menuOrdinal)+".", option)
+            self.menuOrdinal = self.menuOrdinal + 1
+        return self.__getUserChoice__()
+                
+    def __getUserChoice__(self):            
         choice = input("Your choice (enter a number)? ")
         if choice.isdigit():#only True for whole numbers
             choice = int(choice)
-            if choice <= 0 or choice > i-1:
+            if choice <= 0 or choice > self.menuOrdinal-1:
                 choice = None
         else:
             choice = None
@@ -469,13 +501,29 @@ class CreateAdminUser_SubMenu:
         cmd = CommandlineExecutor(self.commandToRun)
         cmd.executeCommand()   
 
+class RunTestsForApp_SubMenu:#TODO: This class assumes there are no sub-apps within an app. Support can be added for it later
+    def __init__(self):
+        self.optionName = "Run tests for an app you specify"
+        self.commandToRun = "python manage.py test"
+        self.fileOps = FileOperations()
+        
+    def execute(self):  
+        currentProjectFolder = os.getcwd()  
+        appNamesWithPath = self.fileOps.getAppNames(currentProjectFolder)
+        menuName = "\nRun tests on which app?";print(menuName);print(len(menuName)*'-')
+        userInput = UserInputForMenu(appNamesWithPath)               
+        choice = userInput.getInputUsingMenuStrings()
+        chosenApp = self.fileOps.extractAppName(appNamesWithPath[choice])
+        self.commandToRun = self.commandToRun + " " + chosenApp
+        print("Running ", self.commandToRun)
+        cmd = CommandlineExecutor(self.commandToRun)
+        cmd.executeCommand()     
 
 # * For the app's models to be accessible in the admin interface:
 #     in appName/admin.py, type:
 #     from .models import Question
 #     admin.site.register(Question)  
-# * To run test cases for an app:
-#     python manage.py test appName                  
+
             
 class MainMenu:#Commandline
     def __init__(self):
@@ -483,13 +531,14 @@ class MainMenu:#Commandline
         self.parameters = ProgramParameters(os.getcwd())#CAUTION/BUG: This assumes that the program is being run from the DjangoRunner folder, so this path will be used for saving all program parameters
         self.parameters.loadParameters() #this function will also check existing folder paths to see if they are still valid, and remove invalid folders        
         #---submenus        
-        self.folderCreation = CreateDjangoProject_SubMenu(["Select folder in which you want to create your Django project"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI
-        self.folderSelection = SelectDjangoFolder_SubMenu(["Select existing project folder"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI
+        self.createProject = CreateDjangoProject_SubMenu(["Select folder in which you want to create your Django project"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI
+        self.selectProject = SelectDjangoFolder_SubMenu(["Select existing project folder"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI
         self.runServer = RunServer_SubMenu()
-        self.createApp = CreateApp_SubMenu(self.parameters.getProjectFolderPath)#passing function handle (TODO: see if coupling like this can be avoided)
+        self.createApp = CreateApp_SubMenu(self.parameters.getProjectFolderPath)#passing function handle (getcwd may suffice) (TODO: see if coupling like this can be avoided)
         self.runAllMigrations = RunMigrationsAll_SubMenu()
         self.runMigrationsForApp = RunMigrationsForApp_SubMenu()
         self.createAdminUser = CreateAdminUser_SubMenu()
+        self.runTestsForApp = RunTestsForApp_SubMenu()
         self.exitOption = Exit_SubMenu() 
         #---menu options
         self.options = [] 
@@ -505,7 +554,7 @@ class MainMenu:#Commandline
         while True:#keep showing main menu until exit
             menuName = "\nMain Menu";print(menuName);print(len(menuName)*'-')
             userInput = UserInputForMenu(self.options)               
-            choice = userInput.getInput()
+            choice = userInput.getInputFromMenuObjects()
             returnVal = self.options[choice].execute()#invoke the sub-menu from one of the objects of sub-menus stored in self.options
             if not returnVal == None: #some data is returned by the submenu
                 #---perform action based on the type of data being returned
@@ -514,16 +563,17 @@ class MainMenu:#Commandline
                     self.parameters.setProjectFolderPath(returnVal.response[returnVal.DJANGO_PROJECT_FOLDER_NAME_WITH_PATH])#register the newly created project
     
     def __setMenuForNoKnownDjangoProjectMode__(self):
-        self.options = [self.folderCreation, self.folderSelection, self.exitOption]
+        self.options = [self.createProject, self.selectProject, self.exitOption]
         
     def __setMenuForNormalMode__(self):
         self.options = [self.runServer, 
-                        self.folderCreation, 
-                        self.folderSelection,
+                        self.createProject, 
+                        self.selectProject,
                         self.createApp,
                         self.runAllMigrations,
                         self.runMigrationsForApp, 
                         self.createAdminUser,
+                        self.runTestsForApp,
                         self.exitOption]                   
     
 

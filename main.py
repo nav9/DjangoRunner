@@ -104,7 +104,29 @@ class FileOperations:
 #             fileSizes.append(sizeOfFiles)
             filesInFolder.append(filesInThisFolder)    
         #Note: files inside folderPaths[0] will be stored in filesInFolder[0]...and so on        
-        return folderPaths, filesInFolder#, fileSizes #returns as [fullFolderPath1, fullFolderPath2, ...], [[filename1, filename2, filename3, ...], [], []], [[filesize1, filesize2, filesize3, ...], [], []]    
+        return folderPaths, filesInFolder#, fileSizes #returns as [fullFolderPath1, fullFolderPath2, ...], [[filename1, filename2, filename3, ...], [], []], [[filesize1, filesize2, filesize3, ...], [], []]
+    
+    def findFile(self, currentProjectPath, filenameToFind):
+        #---automatically register the app in settings.py            
+        folderPaths, filesInFolder = self.getFileNamesOfFilesInAllFoldersAndSubfolders(currentProjectPath)
+        #---find settings.py (it'll be in the first level of subdirectories)
+        foundTheFile = False
+        pathToTheFile = None
+        for folderOrdinal in range(len(folderPaths)):#for each folder
+            pathToTheFile = folderPaths[folderOrdinal]
+            filenames = filesInFolder[folderOrdinal]                
+            print('Searching for ' + filenameToFind + ' in ', pathToTheFile)
+            for fileOrdinal in range(len(filenames)):#for each file in the folder
+                filename = filesInFolder[folderOrdinal][fileOrdinal]
+                if filename == filenameToFind:
+                    print("Found: ", filename, filenameToFind)
+                    foundTheFile = True
+                    break
+            if foundTheFile:
+                break
+        if foundTheFile: pathToTheFile = self.folderSlash(pathToTheFile) + filenameToFind
+        else: print("\n\nERROR: The " + filenameToFind + " file could not be found in ", currentProjectPath, ". Something is wrong. Please check.\n\n")   
+        return pathToTheFile     
     
     def addThisLineAtSpecifiedLocationInFile(self, fileWithPath, lineToAdd, sequenceToSearch):#TODO: This function needs to be made more efficient. There are ways of inserting into a file with a shorter technique
         """ Searches a text file for a sequence of strings as mentioned in sequenceToSearch
@@ -292,7 +314,7 @@ class CommandlineExecutor:
         self.command = command
     
     #TODO: os.system is deprecated, but Popen 
-    def executeCommand(self):
+    def executeCommand(self):#waits until the command is run and returns
         #command = ['django-admin', 'startproject', projectName]
         #subprocess.check_call(command)
         #subprocess.check_call(shlex.split(command))
@@ -301,7 +323,7 @@ class CommandlineExecutor:
         #print("Output: ", output)
         #print("Error: ", error)  
         
-    def executeCommandAndDetach(self):
+    def executeCommandAndDetach(self):#TODO: to be designed to launch the command as a background pocess, return its process id or error and return back to this program's main menu
         subprocess.Popen(shlex.split(self.command), close_fds=True)
         #os.system(self.command)       
         
@@ -397,46 +419,77 @@ class CreateApp_SubMenu:
             self.commandToRun = "python manage.py startapp " + self.appName 
             cmd = CommandlineExecutor(self.commandToRun)
             cmd.executeCommand() #TODO: verify that app got created
-            #---automatically register the app in settings.py            
-            folderPaths, filesInFolder = self.fileOps.getFileNamesOfFilesInAllFoldersAndSubfolders(self.getCurrentProjectPath())
-            #---find settings.py (it'll be in the first level of subdirectories)
-            foundSettingsFile = False
-            for folderOrdinal in range(len(folderPaths)):#for each folder
-                self.pathToSettings = folderPaths[folderOrdinal]
-                filenames = filesInFolder[folderOrdinal]                
-                print('Searching for '+self.settingsFilename+' in ', self.pathToSettings)
-                for fileOrdinal in range(len(filenames)):#for each file in the folder
-                    filename = filesInFolder[folderOrdinal][fileOrdinal]
-                    if filename == self.settingsFilename:
-                        print("Matched: ", filename, self.settingsFilename)
-                        foundSettingsFile = True
-                        break
-                if foundSettingsFile:
-                    break
-            if foundSettingsFile:
-                self.pathToSettings = self.fileOps.folderSlash(self.pathToSettings)#this is the pathToSettings to the settings file
-                self.pathToSettings = self.pathToSettings + self.settingsFilename
+            #---automatically register the app in settings.py   
+            self.pathToSettings = self.fileOps.findFile(self.getCurrentProjectPath())         
+            if self.pathToSettings: 
                 self.__registerAppInSettings__()
-            else:
-                print("ERROR: The settings.py file could not be found for ", self.getCurrentProjectPath(), ". Something is wrong. Please check.")
+            self.appName = None #So that next time the execute function is called, the earlier appName is not used
     
     def __registerAppInSettings__(self):
+        #---convert the appName to the specific format of the first character being uppercase and the remaining being lowercase
         lineToAdd = "\t" + "'" + self.appName + ".apps." + self.appName[0].upper() + self.appName[1:].lower() + "Config" + "', #user created app"
+        #---find location of the end of INSTALLED_APPS and insert appName there
         sequenceToSearch = ["INSTALLED_APPS", "]"]
         self.fileOps.addThisLineAtSpecifiedLocationInFile(self.pathToSettings, lineToAdd, sequenceToSearch)
-        self.pathToSettings = None #so that if the current project is changed in main menu, the earlier detected settings file is not even accidentally used
-        self.appName = None
+        self.pathToSettings = None #so that if the current project is changed in main menu, the earlier detected settings file is not even accidentally used        
 
+class RunMigrationsAll_SubMenu:
+    def __init__(self):
+        self.optionName = "Run makemigrations and migrate (run after changes are made to models)"
+        self.commandToRun = ["python manage.py makemigrations", "python manage.py migrate"]
+    
+    def execute(self):    
+        for oneCommand in self.commandToRun:
+            print("Running ", oneCommand)
+            cmd = CommandlineExecutor(oneCommand)
+            cmd.executeCommand()
+
+class RunMigrationsForApp_SubMenu:
+    def __init__(self):
+        self.optionName = "Run makemigrations for an app you specify (enabling database migrations for an app)"
+        self.commandToRun = "python manage.py makemigrations"
+    
+    def execute(self):    
+        self.appName = input("Enter name of the app to create (or press enter to return to main menu): ") #TODO: verify if the input is valid
+        if not self.appName:
+            print("No appropriate app name specified")
+        else:
+            self.commandToRun = self.commandToRun + " " + self.appName
+            print("Running ", self.commandToRun)
+            cmd = CommandlineExecutor(self.commandToRun)
+            cmd.executeCommand()
+
+class CreateAdminUser_SubMenu:
+    def __init__(self):
+        self.optionName = "Create an admin user"
+        self.commandToRun = "python manage.py createsuperuser"
+    
+    def execute(self):    
+        print("Running ", self.commandToRun)
+        cmd = CommandlineExecutor(self.commandToRun)
+        cmd.executeCommand()   
+
+
+# * For the app's models to be accessible in the admin interface:
+#     in appName/admin.py, type:
+#     from .models import Question
+#     admin.site.register(Question)  
+# * To run test cases for an app:
+#     python manage.py test appName                  
+            
 class MainMenu:#Commandline
     def __init__(self):
         #---program parameters        
         self.parameters = ProgramParameters(os.getcwd())#CAUTION/BUG: This assumes that the program is being run from the DjangoRunner folder, so this path will be used for saving all program parameters
         self.parameters.loadParameters() #this function will also check existing folder paths to see if they are still valid, and remove invalid folders        
-        #---submenus
+        #---submenus        
         self.folderCreation = CreateDjangoProject_SubMenu(["Select folder in which you want to create your Django project"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI
         self.folderSelection = SelectDjangoFolder_SubMenu(["Select existing project folder"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI
         self.runServer = RunServer_SubMenu()
         self.createApp = CreateApp_SubMenu(self.parameters.getProjectFolderPath)#passing function handle (TODO: see if coupling like this can be avoided)
+        self.runAllMigrations = RunMigrationsAll_SubMenu()
+        self.runMigrationsForApp = RunMigrationsForApp_SubMenu()
+        self.createAdminUser = CreateAdminUser_SubMenu()
         self.exitOption = Exit_SubMenu() 
         #---menu options
         self.options = [] 
@@ -467,7 +520,10 @@ class MainMenu:#Commandline
         self.options = [self.runServer, 
                         self.folderCreation, 
                         self.folderSelection,
-                        self.createApp, 
+                        self.createApp,
+                        self.runAllMigrations,
+                        self.runMigrationsForApp, 
+                        self.createAdminUser,
                         self.exitOption]                   
     
 

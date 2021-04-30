@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 '''
-Django Runner: A simple program to manage various Django tasks
+Django Runner: A simple program to manage/automate various Django tasks
 Created on 24-Apr-2021
 @author: Navin
 License: MIT
@@ -116,11 +116,11 @@ class FileOperations:
         for folderOrdinal in range(len(folderPaths)):#for each folder
             pathToTheFile = folderPaths[folderOrdinal]
             filenames = filesInFolder[folderOrdinal]                
-            print('Searching for ' + filenameToFind + ' in ', pathToTheFile)
+            #print('Searching for ' + filenameToFind + ' in ', pathToTheFile)
             for fileOrdinal in range(len(filenames)):#for each file in the folder
                 filename = filesInFolder[folderOrdinal][fileOrdinal]
                 if filename == filenameToFind:
-                    print("Found: ", filename, filenameToFind)
+                    #print("Found: ", filename, filenameToFind)
                     foundTheFile = True
                     break
             if foundTheFile:
@@ -136,7 +136,7 @@ class FileOperations:
             into memory, the insertion is done and then the file is written, so this function
             is appropriate only for small files that will easily fit in memory. """
         linesInFile = self.readFromFile(fileWithPath)
-        print('Read these many lines: ', len(linesInFile))
+        #print('Read these many lines: ', len(linesInFile))
         sequenceOrdinal = 0
         lineOrdinal = 0
         addedLine = False
@@ -158,6 +158,7 @@ class FileOperations:
             self.writeLinesToFile(fileWithPath, linesInFile)
         else:
             print("ERROR: Could not add add "+lineToAdd+" into "+fileWithPath+". Please check what went wrong.")
+        return addedLine
             
     def getAppNames(self, currentProjectPath):
         #---automatically register the app in settings.py            
@@ -168,12 +169,14 @@ class FileOperations:
         for folderOrdinal in range(len(folderPaths)):#for each folder
             pathToTheFile = folderPaths[folderOrdinal]
             filenames = filesInFolder[folderOrdinal]                
-            print('Searching for apps in ', pathToTheFile)
+            #print('Searching for apps in ', pathToTheFile)
             for fileOrdinal in range(len(filenames)):#for each file in the folder
                 filename = filesInFolder[folderOrdinal][fileOrdinal]
                 if filename == self.filePresentInAppsFolder:#this folder contains the filename being searched for, so this is an app folder
                     print("Found app: ", pathToTheFile)
-        print("No apps found")   
+                    appNames.append(pathToTheFile)
+        if not appNames:
+            print("No apps found")   
         return appNames  
     
     def extractAppName(self, fullAppPath):#TODO: If there is a sub-app, this function would need to be modified to cater to it
@@ -433,9 +436,10 @@ class RunServer_SubMenu:
         cmd.executeCommandAndDetach()        
 
 class CreateApp_SubMenu:
-    def __init__(self, currentProjectFunctionHandle):
+    #def __init__(self, currentProjectFunctionHandle):
+    def __init__(self):
         self.optionName = "Create an app for the current project"
-        self.getCurrentProjectPath = currentProjectFunctionHandle        
+        #self.getCurrentProjectPath = currentProjectFunctionHandle        
         self.settingsFilename = "settings.py"
         self.pathToSettings = None
         self.appName = None
@@ -452,7 +456,9 @@ class CreateApp_SubMenu:
             cmd = CommandlineExecutor(self.commandToRun)
             cmd.executeCommand() #TODO: verify that app got created
             #---automatically register the app in settings.py   
-            self.pathToSettings = self.fileOps.findFile(self.getCurrentProjectPath())         
+            #self.pathToSettings = self.fileOps.findFile(self.getCurrentProjectPath())
+            currentProjectPath = os.getcwd()
+            self.pathToSettings = self.fileOps.findFile(currentProjectPath, self.settingsFilename)
             if self.pathToSettings: 
                 self.__registerAppInSettings__()
             self.appName = None #So that next time the execute function is called, the earlier appName is not used
@@ -462,7 +468,8 @@ class CreateApp_SubMenu:
         lineToAdd = "\t" + "'" + self.appName + ".apps." + self.appName[0].upper() + self.appName[1:].lower() + "Config" + "', #user created app"
         #---find location of the end of INSTALLED_APPS and insert appName there
         sequenceToSearch = ["INSTALLED_APPS", "]"]
-        self.fileOps.addThisLineAtSpecifiedLocationInFile(self.pathToSettings, lineToAdd, sequenceToSearch)
+        added = self.fileOps.addThisLineAtSpecifiedLocationInFile(self.pathToSettings, lineToAdd, sequenceToSearch)
+        if added: print("Added " + self.appName + " to " + self.settingsFilename)
         self.pathToSettings = None #so that if the current project is changed in main menu, the earlier detected settings file is not even accidentally used        
 
 class RunMigrationsAll_SubMenu:
@@ -510,14 +517,17 @@ class RunTestsForApp_SubMenu:#TODO: This class assumes there are no sub-apps wit
     def execute(self):  
         currentProjectFolder = os.getcwd()  
         appNamesWithPath = self.fileOps.getAppNames(currentProjectFolder)
-        menuName = "\nRun tests on which app?";print(menuName);print(len(menuName)*'-')
-        userInput = UserInputForMenu(appNamesWithPath)               
-        choice = userInput.getInputUsingMenuStrings()
-        chosenApp = self.fileOps.extractAppName(appNamesWithPath[choice])
-        self.commandToRun = self.commandToRun + " " + chosenApp
-        print("Running ", self.commandToRun)
-        cmd = CommandlineExecutor(self.commandToRun)
-        cmd.executeCommand()     
+        if appNamesWithPath:
+            appNamesWithPath.append('Exit this submenu')
+            menuName = "\nRun tests on which app?";print(menuName);print(len(menuName)*'-')            
+            userInput = UserInputForMenu(appNamesWithPath)               
+            choice = userInput.getInputUsingMenuStrings()
+            if choice != len(appNamesWithPath) -1:                
+                chosenApp = self.fileOps.extractAppName(appNamesWithPath[choice])
+                self.commandToRun = self.commandToRun + " " + chosenApp
+                print("Running ", self.commandToRun)
+                cmd = CommandlineExecutor(self.commandToRun)
+                cmd.executeCommand()     
 
 # * For the app's models to be accessible in the admin interface:
 #     in appName/admin.py, type:
@@ -534,10 +544,11 @@ class MainMenu:#Commandline
         self.createProject = CreateDjangoProject_SubMenu(["Select folder in which you want to create your Django project"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI
         self.selectProject = SelectDjangoFolder_SubMenu(["Select existing project folder"], ["Please specify the root folder of the project"])#The lists allow showing multiple lines of text in the GUI
         self.runServer = RunServer_SubMenu()
-        self.createApp = CreateApp_SubMenu(self.parameters.getProjectFolderPath)#passing function handle (getcwd may suffice) (TODO: see if coupling like this can be avoided)
+        self.createApp = CreateApp_SubMenu()
+        #self.createApp = CreateApp_SubMenu(self.parameters.getProjectFolderPath)#passing function handle (getcwd may suffice) (TODO: see if coupling like this can be avoided)
         self.runAllMigrations = RunMigrationsAll_SubMenu()
         self.runMigrationsForApp = RunMigrationsForApp_SubMenu()
-        self.createAdminUser = CreateAdminUser_SubMenu()
+        self.createAdminUser = CreateAdminUser_SubMenu() #TODO: This option should be available only under a certain situation. Find out and implement
         self.runTestsForApp = RunTestsForApp_SubMenu()
         self.exitOption = Exit_SubMenu() 
         #---menu options
@@ -572,7 +583,7 @@ class MainMenu:#Commandline
                         self.createApp,
                         self.runAllMigrations,
                         self.runMigrationsForApp, 
-                        self.createAdminUser,
+                        #self.createAdminUser,
                         self.runTestsForApp,
                         self.exitOption]                   
     

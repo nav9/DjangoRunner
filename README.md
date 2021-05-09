@@ -4,6 +4,12 @@
 # Django Runner
 A program that slightly simplifies Django use, by providing a menu-driven interface. This project is under construction, but a few functionalities are already available.  
   
+# Prerequisites  
+Install the following if not already installed:
+python -m pip install Django
+pip install PySimpleGUI
+  
+  
 # To Run
 python3 main.py  
   

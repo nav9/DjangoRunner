@@ -17,3 +17,4 @@ python3 main.py
 The project is created with LiClipse (not Eclipse. This is LiClipse). However, it's not recommended to run the program from LiClipse, since some necessary environment variables that are necessary for Django, aren't available via the IDE. So it's recommended to run the program from the command prompt.
 
 
+[![Donate](https://raw.githubusercontent.com/nav9/VCF_contacts_merger/main/gallery/thankYouDonateButton.png)](https://nrecursions.blogspot.com/2020/08/saying-thank-you.html)  
